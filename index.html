@@ -308,8 +308,10 @@
             searchBtn.disabled = true;
 
             try {
-                // 使用 Yahoo Finance API 取得台股資料
-                const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${stockCode}.TW?interval=1d&range=6mo`);
+                // 使用 CORS proxy 來取得台股資料
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${stockCode}.TW?interval=1d&range=6mo`;
+                const response = await fetch(proxyUrl + encodeURIComponent(apiUrl));
                 
                 if (!response.ok) {
                     throw new Error('無法取得股票資料，請確認股票代碼是否正確');
