@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台股走勢查詢</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .input-group {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            align-self: flex-end;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .stock-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .stock-info.show {
+            display: block;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .info-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .info-value.positive {
+            color: #e74c3c;
+        }
+
+        .info-value.negative {
+            color: #27ae60;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .examples {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .examples h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .examples code {
+            background: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin: 0 5px;
+            font-family: monospace;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .search-box {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 台股走勢查詢系統</h1>
+            <p>即時查詢台灣股票市場資訊與走勢圖</p>
+        </div>
+
+        <div class="content">
+            <div class="examples">
+                <h3>💡 使用說明</h3>
+                <p>請輸入股票代碼（例如：<code>2330</code> 台積電、<code>2317</code> 鴻海、<code>2454</code> 聯發科）</p>
+            </div>
+
+            <div class="search-box">
+                <div class="input-group">
+                    <label for="stockCode">股票代碼</label>
+                    <input type="text" id="stockCode" placeholder="例如：2330" maxlength="10">
+                </div>
+                <button id="searchBtn" onclick="searchStock()">🔍 查詢股票</button>
+            </div>
+
+            <div class="error" id="errorMsg"></div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 15px; color: #666;">載入中...</p>
+            </div>
+
+            <div class="stock-info" id="stockInfo">
+                <h2 id="stockName"></h2>
+                <div class="info-grid" id="infoGrid"></div>
+                <div class="chart-container">
+                    <canvas id="stockChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+
+        // 按下 Enter 鍵時查詢
+        document.getElementById('stockCode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchStock();
+            }
+        });
+
+        async function searchStock() {
+            const stockCode = document.getElementById('stockCode').value.trim();
+            const errorMsg = document.getElementById('errorMsg');
+            const loading = document.getElementById('loading');
+            const stockInfo = document.getElementById('stockInfo');
+            const searchBtn = document.getElementById('searchBtn');
+
+            // 驗證輸入
+            if (!stockCode) {
+                showError('請輸入股票代碼');
+                return;
+            }
+
+            // 隱藏錯誤訊息和舊資料
+            errorMsg.classList.remove('show');
+            stockInfo.classList.remove('show');
+            
+            // 顯示載入中
+            loading.classList.add('show');
+            searchBtn.disabled = true;
+
+            try {
+                // 使用 Yahoo Finance API 取得台股資料
+                const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${stockCode}.TW?interval=1d&range=6mo`);
+                
+                if (!response.ok) {
+                    throw new Error('無法取得股票資料，請確認股票代碼是否正確');
+                }
+
+                const data = await response.json();
+                
+                if (!data.chart.result || data.chart.result.length === 0) {
+                    throw new Error('查無此股票代碼');
+                }
+
+                displayStockData(data.chart.result[0]);
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                loading.classList.remove('show');
+                searchBtn.disabled = false;
+            }
+        }
+
+        function displayStockData(data) {
+            const meta = data.meta;
+            const quotes = data.indicators.quote[0];
+            const timestamps = data.timestamp;
+
+            // 顯示股票名稱
+            document.getElementById('stockName').textContent = `${meta.symbol} - ${meta.longName || meta.shortName || ''}`;
+
+            // 計算漲跌
+            const currentPrice = meta.regularMarketPrice;
+            const previousClose = meta.chartPreviousClose;
+            const change = currentPrice - previousClose;
+            const changePercent = (change / previousClose) * 100;
+            const isPositive = change >= 0;
+
+            // 顯示股票資訊
+            const infoGrid = document.getElementById('infoGrid');
+            infoGrid.innerHTML = `
+                <div class="info-item">
+                    <div class="info-label">目前股價</div>
+                    <div class="info-value">${currentPrice.toFixed(2)}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">漲跌</div>
+                    <div class="info-value ${isPositive ? 'positive' : 'negative'}">
+                        ${isPositive ? '+' : ''}${change.toFixed(2)} (${isPositive ? '+' : ''}${changePercent.toFixed(2)}%)
+                    </div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">開盤價</div>
+                    <div class="info-value">${(quotes.open[quotes.open.length - 1] || 0).toFixed(2)}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">最高價</div>
+                    <div class="info-value">${(quotes.high[quotes.high.length - 1] || 0).toFixed(2)}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">最低價</div>
+                    <div class="info-value">${(quotes.low[quotes.low.length - 1] || 0).toFixed(2)}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">成交量</div>
+                    <div class="info-value">${formatVolume(quotes.volume[quotes.volume.length - 1] || 0)}</div>
+                </div>
+            `;
+
+            // 繪製走勢圖
+            drawChart(timestamps, quotes.close);
+
+            // 顯示股票資訊區塊
+            document.getElementById('stockInfo').classList.add('show');
+        }
+
+        function drawChart(timestamps, closePrices) {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+
+            // 格式化日期
+            const labels = timestamps.map(ts => {
+                const date = new Date(ts * 1000);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            // 濾除 null 值
+            const validData = closePrices.map((price, index) => ({
+                x: labels[index],
+                y: price
+            })).filter(item => item.y !== null);
+
+            // 銷毀舊圖表
+            if (chart) {
+                chart.destroy();
+            }
+
+            // 建立新圖表
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: validData.map(item => item.x),
+                    datasets: [{
+                        label: '收盤價',
+                        data: validData.map(item => item.y),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        pointHoverBackgroundColor: '#667eea',
+                        pointHoverBorderColor: 'white',
+                        pointHoverBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            padding: 12,
+                            titleColor: 'white',
+                            bodyColor: 'white',
+                            callbacks: {
+                                label: function(context) {
+                                    return `收盤價: ${context.parsed.y.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxTicksLimit: 12,
+                                autoSkip: true
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(0,0,0,0.05)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        function formatVolume(volume) {
+            if (volume >= 1000000) {
+                return (volume / 1000000).toFixed(2) + 'M';
+            } else if (volume >= 1000) {
+                return (volume / 1000).toFixed(2) + 'K';
+            }
+            return volume.toString();
+        }
+
+        function showError(message) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = '❌ ' + message;
+            errorMsg.classList.add('show');
+        }
+    </script>
+</body>
+</html>
