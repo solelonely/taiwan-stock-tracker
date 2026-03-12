@@ -132,18 +132,18 @@
             background: white;
             padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .info-label {
-            font-size: 0.9em;
             color: #666;
+            font-size: 0.9em;
             margin-bottom: 5px;
         }
 
         .info-value {
             font-size: 1.3em;
-            font-weight: 600;
+            font-weight: bold;
             color: #333;
         }
 
@@ -158,32 +158,12 @@
         .chart-container {
             position: relative;
             height: 400px;
-            margin-top: 20px;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
+            margin-top: 30px;
             display: none;
         }
 
-        .loading.show {
+        .chart-container.show {
             display: block;
-        }
-
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
         }
 
         .error {
@@ -191,7 +171,7 @@
             color: #c33;
             padding: 15px;
             border-radius: 10px;
-            margin-bottom: 20px;
+            margin-top: 20px;
             display: none;
         }
 
@@ -199,42 +179,34 @@
             display: block;
         }
 
-        .examples {
-            background: #e8f4f8;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-size: 1.2em;
+            display: none;
         }
 
-        .examples h3 {
-            margin-bottom: 10px;
-            color: #333;
+        .loading.show {
+            display: block;
         }
 
-        .examples code {
-            background: white;
-            padding: 3px 8px;
-            border-radius: 4px;
-            margin: 0 5px;
-            font-family: monospace;
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
         }
 
-        @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.8em;
-            }
-            
-            .content {
-                padding: 20px;
-            }
-            
-            .search-box {
-                flex-direction: column;
-            }
-            
-            button {
-                width: 100%;
-            }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .data-source {
+            text-align: right;
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -242,36 +214,33 @@
     <div class="container">
         <div class="header">
             <h1>📈 台股走勢查詢系統</h1>
-            <p>即時查詢台灣股票市場資訊與走勢圖</p>
+            <p>即時查詢台灣股票市場資訊</p>
         </div>
-
+        
         <div class="content">
-            <div class="examples">
-                <h3>💡 使用說明</h3>
-                <p>請輸入股票代碼（例如：<code>2330</code> 台積電、<code>2317</code> 鴻海、<code>2454</code> 聯發科）</p>
-            </div>
-
             <div class="search-box">
                 <div class="input-group">
                     <label for="stockCode">股票代碼</label>
-                    <input type="text" id="stockCode" placeholder="例如：2330" maxlength="10">
+                    <input type="text" id="stockCode" placeholder="例如: 2330" value="2330">
                 </div>
-                <button id="searchBtn" onclick="searchStock()">🔍 查詢股票</button>
+                <div class="input-group">
+                    <label for="period">查詢期間 (月)</label>
+                    <input type="number" id="period" placeholder="1-6" value="6" min="1" max="6">
+                </div>
+                <button onclick="searchStock()" id="searchBtn">🔍 查詢</button>
             </div>
 
-            <div class="error" id="errorMsg"></div>
+            <div class="loading" id="loading">載入中</div>
+            <div class="error" id="error"></div>
             
-            <div class="loading" id="loading">
-                <div class="spinner"></div>
-                <p style="margin-top: 15px; color: #666;">載入中...</p>
-            </div>
-
             <div class="stock-info" id="stockInfo">
                 <h2 id="stockName"></h2>
                 <div class="info-grid" id="infoGrid"></div>
-                <div class="chart-container">
-                    <canvas id="stockChart"></canvas>
-                </div>
+            </div>
+
+            <div class="chart-container" id="chartContainer">
+                <canvas id="stockChart"></canvas>
+                <div class="data-source">資料來源：台灣證券交易所 (TWSE)</div>
             </div>
         </div>
     </div>
@@ -279,150 +248,207 @@
     <script>
         let chart = null;
 
-        // 按下 Enter 鍵時查詢
-        document.getElementById('stockCode').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                searchStock();
-            }
-        });
-
+        // 判斷是上市(tse)還是上櫃(otc)
+        // 上市代碼通常為4位數字，上櫃也可能是4位，先預設tse，查不到再試otc
         async function searchStock() {
             const stockCode = document.getElementById('stockCode').value.trim();
-            const errorMsg = document.getElementById('errorMsg');
-            const loading = document.getElementById('loading');
-            const stockInfo = document.getElementById('stockInfo');
-            const searchBtn = document.getElementById('searchBtn');
+            const period = parseInt(document.getElementById('period').value) || 6;
 
-            // 驗證輸入
             if (!stockCode) {
                 showError('請輸入股票代碼');
                 return;
             }
 
-            // 隱藏錯誤訊息和舊資料
-            errorMsg.classList.remove('show');
-            stockInfo.classList.remove('show');
-            
-            // 顯示載入中
-            loading.classList.add('show');
-            searchBtn.disabled = true;
+            showLoading(true);
+            hideError();
+            hideInfo();
 
             try {
-                // 使用 CORS proxy 來取得台股資料
-                const proxyUrl = 'https://api.allorigins.win/raw?url=';
-                const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${stockCode}.TW?interval=1d&range=6mo`;
-                const response = await fetch(proxyUrl + encodeURIComponent(apiUrl));
-                
-                if (!response.ok) {
-                    throw new Error('無法取得股票資料，請確認股票代碼是否正確');
+                // Step 1: 取得歷史月資料 (TWSE OpenAPI)
+                const historicalData = await fetchHistoricalData(stockCode, period);
+
+                if (!historicalData || historicalData.length === 0) {
+                    throw new Error('查無此股票代碼，請確認後重試（目前僅支援上市股票）');
                 }
 
-                const data = await response.json();
-                
-                if (!data.chart.result || data.chart.result.length === 0) {
-                    throw new Error('查無此股票代碼');
-                }
+                // Step 2: 取得即時/最新價格 (TWSE mis API via CORS proxy)
+                const latestInfo = await fetchLatestPrice(stockCode);
 
-                displayStockData(data.chart.result[0]);
+                // Step 3: 整理資料並顯示
+                const lastRecord = historicalData[historicalData.length - 1];
+                const price = latestInfo ? latestInfo.price : parseFloat(lastRecord[6]); // 收盤價
+                const prevClose = latestInfo ? latestInfo.prevClose : parseFloat(historicalData[historicalData.length - 2]?.[6] || lastRecord[6]);
+                const stockName = latestInfo ? latestInfo.name : stockCode;
+
+                const change = price - prevClose;
+                const changePercent = prevClose !== 0 ? (change / prevClose * 100) : 0;
+
+                displayStockInfo({
+                    symbol: stockCode,
+                    name: stockName,
+                    price: price,
+                    change: change,
+                    changePercent: changePercent,
+                    open: latestInfo ? latestInfo.open : parseFloat(lastRecord[3]),
+                    high: latestInfo ? latestInfo.high : parseFloat(lastRecord[4]),
+                    low: latestInfo ? latestInfo.low : parseFloat(lastRecord[5]),
+                    volume: latestInfo ? latestInfo.volume : parseInt(lastRecord[2].replace(/,/g, '')),
+                    previousClose: prevClose
+                });
+
+                // Step 4: 繪製走勢圖（用歷史月資料）
+                drawChart(historicalData, stockCode);
+
             } catch (error) {
-                showError(error.message);
+                console.error('Error:', error);
+                showError(`查詢失敗: ${error.message}`);
             } finally {
-                loading.classList.remove('show');
-                searchBtn.disabled = false;
+                showLoading(false);
             }
         }
 
-        function displayStockData(data) {
-            const meta = data.meta;
-            const quotes = data.indicators.quote[0];
-            const timestamps = data.timestamp;
+        // 取得歷史每日收盤資料（逐月查詢 TWSE OpenAPI，拼接成指定月數）
+        async function fetchHistoricalData(stockCode, months) {
+            const allData = [];
+            const today = new Date();
 
-            // 顯示股票名稱
-            document.getElementById('stockName').textContent = `${meta.symbol} - ${meta.longName || meta.shortName || ''}`;
+            for (let i = months - 1; i >= 0; i--) {
+                const targetDate = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                const yyyymmdd = `${targetDate.getFullYear()}${
+                    String(targetDate.getMonth() + 1).padStart(2, '0')}01`;
 
-            // 計算漲跌
-            const currentPrice = meta.regularMarketPrice;
-            const previousClose = meta.chartPreviousClose;
-            const change = currentPrice - previousClose;
-            const changePercent = (change / previousClose) * 100;
-            const isPositive = change >= 0;
+                const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${yyyymmdd}&stockNo=${stockCode}&response=json`;
 
-            // 顯示股票資訊
+                try {
+                    const res = await fetch(url);
+                    const json = await res.json();
+
+                    // stat: OK 代表有資料
+                    if (json.stat === 'OK' && json.data && json.data.length > 0) {
+                        allData.push(...json.data);
+                    }
+                } catch (e) {
+                    console.warn(`月份 ${yyyymmdd} 查詢失敗`, e);
+                }
+
+                // 避免請求太快被擋
+                await sleep(300);
+            }
+
+            return allData;
+        }
+
+        // 取得即時價格（透過 TWSE mis API）
+        async function fetchLatestPrice(stockCode) {
+            try {
+                const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_${stockCode}.tw&json=1&delay=0`;
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(misUrl)}`;
+
+                const res = await fetch(proxyUrl);
+                const wrapper = await res.json();
+                const data = JSON.parse(wrapper.contents);
+
+                if (!data.msgArray || data.msgArray.length === 0) {
+                    return null;
+                }
+
+                const stock = data.msgArray[0];
+                const price = parseFloat(stock.z) || parseFloat(stock.y); // z=即時成交價, y=昨收
+                const prevClose = parseFloat(stock.y);
+
+                return {
+                    name: stock.n || stockCode,
+                    price: price,
+                    prevClose: prevClose,
+                    open: parseFloat(stock.o) || 0,
+                    high: parseFloat(stock.h) || 0,
+                    low: parseFloat(stock.l) || 0,
+                    volume: parseInt(stock.v) || 0
+                };
+            } catch (e) {
+                console.warn('即時價格查詢失敗，使用歷史最後一筆', e);
+                return null;
+            }
+        }
+
+        function displayStockInfo(info) {
+            document.getElementById('stockName').textContent = `${info.name} (${info.symbol})`;
+
+            const changeClass = info.change >= 0 ? 'positive' : 'negative';
+            const changeSymbol = info.change >= 0 ? '+' : '';
+
             const infoGrid = document.getElementById('infoGrid');
             infoGrid.innerHTML = `
                 <div class="info-item">
-                    <div class="info-label">目前股價</div>
-                    <div class="info-value">${currentPrice.toFixed(2)}</div>
+                    <div class="info-label">現價</div>
+                    <div class="info-value ${changeClass}">${info.price.toFixed(2)}</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">漲跌</div>
-                    <div class="info-value ${isPositive ? 'positive' : 'negative'}">
-                        ${isPositive ? '+' : ''}${change.toFixed(2)} (${isPositive ? '+' : ''}${changePercent.toFixed(2)}%)
-                    </div>
+                    <div class="info-value ${changeClass}">${changeSymbol}${info.change.toFixed(2)}</div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">開盤價</div>
-                    <div class="info-value">${(quotes.open[quotes.open.length - 1] || 0).toFixed(2)}</div>
+                    <div class="info-label">漲跌幅</div>
+                    <div class="info-value ${changeClass}">${changeSymbol}${info.changePercent.toFixed(2)}%</div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">最高價</div>
-                    <div class="info-value">${(quotes.high[quotes.high.length - 1] || 0).toFixed(2)}</div>
+                    <div class="info-label">今開</div>
+                    <div class="info-value">${info.open ? info.open.toFixed(2) : '-'}</div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">最低價</div>
-                    <div class="info-value">${(quotes.low[quotes.low.length - 1] || 0).toFixed(2)}</div>
+                    <div class="info-label">今高</div>
+                    <div class="info-value">${info.high ? info.high.toFixed(2) : '-'}</div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">成交量</div>
-                    <div class="info-value">${formatVolume(quotes.volume[quotes.volume.length - 1] || 0)}</div>
+                    <div class="info-label">今低</div>
+                    <div class="info-value">${info.low ? info.low.toFixed(2) : '-'}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">昨收</div>
+                    <div class="info-value">${info.previousClose.toFixed(2)}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">成交量(張)</div>
+                    <div class="info-value">${formatVolume(info.volume)}</div>
                 </div>
             `;
 
-            // 繪製走勢圖
-            drawChart(timestamps, quotes.close);
-
-            // 顯示股票資訊區塊
             document.getElementById('stockInfo').classList.add('show');
         }
 
-        function drawChart(timestamps, closePrices) {
+        // TWSE OpenAPI 每日資料欄位:
+        // [0]=日期, [1]=成交股數, [2]=成交金額, [3]=開盤價, [4]=最高價, [5]=最低價, [6]=收盤價, [7]=漲跌價差, [8]=成交筆數
+        function drawChart(data, stockCode) {
             const ctx = document.getElementById('stockChart').getContext('2d');
 
-            // 格式化日期
-            const labels = timestamps.map(ts => {
-                const date = new Date(ts * 1000);
-                return `${date.getMonth() + 1}/${date.getDate()}`;
-            });
-
-            // 濾除 null 值
-            const validData = closePrices.map((price, index) => ({
-                x: labels[index],
-                y: price
-            })).filter(item => item.y !== null);
-
-            // 銷毀舊圖表
             if (chart) {
                 chart.destroy();
             }
 
-            // 建立新圖表
+            const labels = data.map(row => {
+                // 日期格式為民國年：113/01/02 → 轉為 MM/DD
+                const parts = row[0].split('/');
+                return `${parts[1]}/${parts[2]}`;
+            });
+
+            const prices = data.map(row => {
+                const p = parseFloat(row[6]);
+                return isNaN(p) ? null : p;
+            });
+
             chart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: validData.map(item => item.x),
+                    labels: labels,
                     datasets: [{
-                        label: '收盤價',
-                        data: validData.map(item => item.y),
+                        label: `${stockCode} 收盤價`,
+                        data: prices,
                         borderColor: '#667eea',
                         backgroundColor: 'rgba(102, 126, 234, 0.1)',
                         borderWidth: 2,
                         fill: true,
                         tension: 0.4,
-                        pointRadius: 0,
-                        pointHoverRadius: 5,
-                        pointHoverBackgroundColor: '#667eea',
-                        pointHoverBorderColor: 'white',
-                        pointHoverBorderWidth: 2
+                        spanGaps: true
                     }]
                 },
                 options: {
@@ -430,66 +456,90 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: false
+                            display: true,
+                            position: 'top'
                         },
                         tooltip: {
                             mode: 'index',
                             intersect: false,
-                            backgroundColor: 'rgba(0,0,0,0.8)',
-                            padding: 12,
-                            titleColor: 'white',
-                            bodyColor: 'white',
                             callbacks: {
                                 label: function(context) {
-                                    return `收盤價: ${context.parsed.y.toFixed(2)}`;
+                                    return ` 收盤價: ${context.parsed.y.toFixed(2)}`;
                                 }
                             }
                         }
                     },
                     scales: {
-                        x: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                maxTicksLimit: 12,
-                                autoSkip: true
-                            }
-                        },
                         y: {
-                            grid: {
-                                color: 'rgba(0,0,0,0.05)'
-                            },
+                            beginAtZero: false,
                             ticks: {
                                 callback: function(value) {
                                     return value.toFixed(2);
                                 }
                             }
+                        },
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 20,
+                                maxRotation: 45
+                            }
                         }
-                    },
-                    interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
                     }
                 }
             });
+
+            document.getElementById('chartContainer').classList.add('show');
         }
 
         function formatVolume(volume) {
-            if (volume >= 1000000) {
-                return (volume / 1000000).toFixed(2) + 'M';
+            if (volume >= 100000000) {
+                return (volume / 100000000).toFixed(2) + '億';
+            } else if (volume >= 10000) {
+                return (volume / 10000).toFixed(2) + '萬';
             } else if (volume >= 1000) {
-                return (volume / 1000).toFixed(2) + 'K';
+                return (volume / 1000).toFixed(2) + '千';
             }
             return volume.toString();
         }
 
-        function showError(message) {
-            const errorMsg = document.getElementById('errorMsg');
-            errorMsg.textContent = '❌ ' + message;
-            errorMsg.classList.add('show');
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
         }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('show');
+        }
+
+        function showLoading(show) {
+            const loadingDiv = document.getElementById('loading');
+            if (show) {
+                loadingDiv.classList.add('show');
+                document.getElementById('searchBtn').disabled = true;
+            } else {
+                loadingDiv.classList.remove('show');
+                document.getElementById('searchBtn').disabled = false;
+            }
+        }
+
+        function hideInfo() {
+            document.getElementById('stockInfo').classList.remove('show');
+            document.getElementById('chartContainer').classList.remove('show');
+        }
+
+        // 支援 Enter 鍵查詢
+        document.getElementById('stockCode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchStock();
+        });
+
+        document.getElementById('period').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchStock();
+        });
     </script>
 </body>
 </html>
